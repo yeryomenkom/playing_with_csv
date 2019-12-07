@@ -6,6 +6,16 @@ import yeryomenkom.Csv._
 
 case class Tick(isin: String, timestamp: LocalDateTime, price: Double)
 
+object Tick {
+  implicit val tickCsvDecoder: CsvDecoder[Tick] = CsvDecoder.create { line =>
+    val isinStr :: timestampStr :: priceStr :: Nil = line.split(',').toList
+    Tick(isinStr, LocalDateTime.parse(timestampStr), priceStr.toDouble)
+  }
+  implicit val tickCsvEncoder: CsvEncoder[Tick] = CsvEncoder.create { tick =>
+    List(tick.isin, tick.timestamp.toString, tick.price.toString).mkString(",")
+  }
+}
+
 object PlaygroundApp extends App {
 
   val ticks = Seq(
@@ -14,18 +24,6 @@ object PlaygroundApp extends App {
     Tick("ASOODDS", LocalDateTime.now(), 123.129),
     Tick("ASOODDS", LocalDateTime.now(), 8.97)
   )
-
-  implicit val tickCsvDecoder: CsvDecoder[Tick] = new CsvDecoder[Tick] {
-    override def decode(line: CsvLine): Tick = {
-      val isinStr :: timestampStr :: priceStr :: Nil = line.split(',').toList
-      Tick(isinStr, LocalDateTime.parse(timestampStr), priceStr.toDouble)
-    }
-  }
-
-  implicit val tickCsvEncoder: CsvEncoder[Tick] = new CsvEncoder[Tick] {
-    override def encode(x: Tick): CsvLine =
-      List(x.isin, x.timestamp.toString, x.price.toString).mkString(",")
-  }
 
   val csvString = Csv.encode(ticks)
   println(csvString)
