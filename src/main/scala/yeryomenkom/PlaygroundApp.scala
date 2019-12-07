@@ -4,31 +4,37 @@ import java.time.temporal.ChronoUnit
 import java.time.{Instant, LocalDateTime, ZoneOffset}
 
 import yeryomenkom.Csv._
+import yeryomenkom.Tick.{fromTuple, toTuple}
 
 import scala.reflect.ClassTag
 
 case class Tick(isin: String, timestamp: LocalDateTime, price: Double)
 
-object Tick {
-  implicit val tickCsvDecoder: CsvDecoder[Tick] = CsvDecoder.create { line =>
-    val isinStr :: timestampStr :: priceStr :: Nil = line.split(',').toList
-    Tick(isinStr, LocalDateTime.parse(timestampStr), priceStr.toDouble)
-  }
-  implicit val tickCsvEncoder: CsvEncoder[Tick] = CsvEncoder.create { tick =>
-    List(tick.isin, tick.timestamp.toString, tick.price.toString).mkString(",")
-  }
+//lets define decoders/encoders that we will use in many places in our app
+trait CsvSupport {
+  implicit val LocalDateTimeCsvSegmentEncoder: CsvSegmentEncoder[LocalDateTime] =
+    CsvSegmentEncoder.create(_.toString)
+  implicit val LocalDateTimeCsvSegmentDecoder: CsvSegmentDecoder[LocalDateTime] =
+    CsvSegmentDecoder.create(LocalDateTime.parse)
+}
+
+object Tick extends CsvSupport {
+  val fromTuple: (String, LocalDateTime, Double) => Tick = Tick.apply _
+  val toTuple: Tick => (String, LocalDateTime, Double) = (Tick.unapply _).andThen(_.get)
+
+  //looks like a useless code...
+  implicit val tickCsvDecoder: CsvDecoder[Tick] = CsvDecoder.from(fromTuple)
+  implicit val tickCsvEncoder: CsvEncoder[Tick] = CsvEncoder.from(toTuple)
 }
 
 case class TickEnriched(isin: String, timestamp: LocalDateTime, price: Double, closePrice: Double)
 //oh... looks too similar to the Tick encoders/decoders... But maybe I can live with it...
-object TickEnriched {
-  implicit val enrichedTickCsvDecoder: CsvDecoder[TickEnriched] = CsvDecoder.create { line =>
-    val isinStr :: timestampStr :: priceStr :: closePriceStr :: Nil = line.split(',').toList
-    TickEnriched(isinStr, LocalDateTime.parse(timestampStr), priceStr.toDouble, closePriceStr.toDouble)
-  }
-  implicit val enrichedTickCsvEncoder: CsvEncoder[TickEnriched] = CsvEncoder.create { tick =>
-    List(tick.isin, tick.timestamp.toString, tick.price.toString, tick.closePrice.toString).mkString(",")
-  }
+object TickEnriched extends CsvSupport {
+  val fromTuple = TickEnriched.apply _
+  val toTuple = (TickEnriched.unapply _).andThen(_.get)
+
+  implicit val enrichedTickCsvDecoder: CsvDecoder[TickEnriched] = CsvDecoder.from(fromTuple)
+  implicit val enrichedTickCsvEncoder: CsvEncoder[TickEnriched] = CsvEncoder.from(toTuple)
 }
 
 object PlaygroundApp extends App {
@@ -63,15 +69,14 @@ class Service {
   def checkEnrichedTicksSendingForClientA(ticks: Seq[TickEnriched]): Unit = checkSending(ticks)
   def checkTicksSendingForClientB(ticks: Seq[Tick]): Unit = {
     //ok. client B wants to receive timestamp in UNIX time
-    implicit val tickCsvDecoderTweaked: CsvDecoder[Tick] = CsvDecoder.create { line =>
-      val isinStr :: timestampStr :: priceStr :: Nil = line.split(',').toList
-      Tick(isinStr, LocalDateTime.ofInstant(Instant.ofEpochMilli(timestampStr.toLong), ZoneOffset.UTC), priceStr.toDouble)
-    }
-    implicit val tickCsvEncoderTweaked: CsvEncoder[Tick] = CsvEncoder.create { tick =>
-      List(tick.isin, tick.timestamp.toInstant(ZoneOffset.UTC).toEpochMilli, tick.price.toString).mkString(",")
-    }
+    implicit val localDateTimeSegmentEncoder: CsvSegmentEncoder[LocalDateTime] =
+      CsvSegmentEncoder.create(_.toInstant(ZoneOffset.UTC).toEpochMilli.toString)
+    implicit val localDateTimeSegmentDecoder: CsvSegmentDecoder[LocalDateTime] =
+      CsvSegmentDecoder.create(str => LocalDateTime.ofInstant(Instant.ofEpochMilli(str.toLong), ZoneOffset.UTC))
+    implicit val tickCsvDecoder: CsvDecoder[Tick] = CsvDecoder.from(fromTuple)
+    implicit val tickCsvEncoder: CsvEncoder[Tick] = CsvEncoder.from(toTuple)
 
-    //it works... but it is to verbose... we have to fix it somehow!!!
+    //it works... but still looks too messy...
     checkSending(ticks)
   }
 }
