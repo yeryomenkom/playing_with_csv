@@ -11,12 +11,6 @@ case class Tick(isin: String, timestamp: LocalDateTime, price: Double)
 
 //lets define decoders/encoders and Isos that we will use in many places in our app
 object CsvSupport {
-  //these Isos... They look very similar...
-  implicit val TickTupleIso: Iso[Tick, (String, LocalDateTime, Double)] =
-    Iso((Tick.apply _).tupled, (Tick.unapply _).andThen(_.get))
-  implicit val EnrichedTickTupleIso =
-    Iso((TickEnriched.apply _).tupled, (TickEnriched.unapply _).andThen(_.get))
-
   implicit val LocalDateTimeCsvSegmentEncoder: CsvSegmentEncoder[LocalDateTime] =
     CsvSegmentEncoder.create(_.toString)
   implicit val LocalDateTimeCsvSegmentDecoder: CsvSegmentDecoder[LocalDateTime] =

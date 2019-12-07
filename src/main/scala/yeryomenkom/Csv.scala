@@ -2,12 +2,9 @@ package yeryomenkom
 
 import scala.reflect.ClassTag
 import scala.util.Try
+import shapeless._
 
 object Csv {
-
-  //define isomorphism abstraction
-  case class Iso[A, B](from: B => A, to: A => B)
-
   val DefaultCsvDelimiter = ","
 
   type CsvSegment = String
@@ -22,6 +19,7 @@ object Csv {
   object CsvSegmentEncoder {
     def create[T](f: T => CsvSegment): CsvSegmentEncoder[T] = (value: T) => f(value)
     implicit val StringDecoder: CsvSegmentEncoder[String] = create(identity)
+    //hmmm... too similar...
     implicit val IntDecoder: CsvSegmentEncoder[Int] = create(_.toString)
     implicit val LongDecoder: CsvSegmentEncoder[Long] = create(_.toString)
     implicit val DoubleDecoder: CsvSegmentEncoder[Double] = create(_.toString)
@@ -54,26 +52,13 @@ object Csv {
       override def encode(x: A): CsvLine = f(x)
     }
 
-    implicit def deriveEncoder[A,T](implicit iso: Iso[A,T], encoder: CsvEncoder[T]): CsvEncoder[A] =
-      encoder.contramap(iso.to)
+    implicit def deriveCsvEncoder[T,R](implicit gen: Generic.Aux[T,R], genEncoder: CsvEncoder[R]): CsvEncoder[T] =
+      genEncoder.contramap(gen.to)
 
-    //hmm... still looks like some assembler lang... it would be nice if some machine could generate it...
-    implicit def tuple3Encoder[X1,X2,X3](implicit
-                                         x1Enc: CsvSegmentEncoder[X1],
-                                         x2Enc: CsvSegmentEncoder[X2],
-                                         x3Enc: CsvSegmentEncoder[X3]): CsvEncoder[(X1,X2,X3)] =
-      create { case (x1, x2, x3) =>
-        List(x1Enc.encode(x1), x2Enc.encode(x2), x3Enc.encode(x3))
-      }
+    implicit val hnilEncoder: CsvEncoder[HNil] = (_: HNil) => List.empty
 
-    implicit def tuple4Encoder[X1,X2,X3,X4](implicit
-                                            x1Enc: CsvSegmentEncoder[X1],
-                                            x2Enc: CsvSegmentEncoder[X2],
-                                            x3Enc: CsvSegmentEncoder[X3],
-                                            x4Enc: CsvSegmentEncoder[X4]): CsvEncoder[(X1,X2,X3,X4)] =
-      create { case (x1, x2, x3, x4) =>
-        List(x1Enc.encode(x1), x2Enc.encode(x2), x3Enc.encode(x3), x4Enc.encode(x4))
-      }
+    implicit def hlistEncoder[H,T <: HList](implicit he: CsvSegmentEncoder[H], te: CsvEncoder[T]): CsvEncoder[H :: T] =
+      (value: H :: T) => he.encode(value.head) +: te.encode(value.tail)
   }
 
   trait CsvDecoder[A] {
@@ -87,27 +72,14 @@ object Csv {
       override def decode(line: CsvLine): A = f(line)
     }
 
-    implicit def deriveDecoder[A,T](implicit iso: Iso[A,T], decoder: CsvDecoder[T]): CsvDecoder[A] =
-      decoder.map(iso.from)
+    implicit def deriveCsvDecoder[T,R](implicit gen: Generic.Aux[T,R], genDecoder: CsvDecoder[R]): CsvDecoder[T] =
+      genDecoder.map(gen.from)
 
-    implicit def tuple3Decoder[A,X1,X2,X3](implicit
-                                           x1Dec: CsvSegmentDecoder[X1],
-                                           x2Dec: CsvSegmentDecoder[X2],
-                                           x3Dec: CsvSegmentDecoder[X3]): CsvDecoder[(X1,X2,X3)] =
-      create { line =>
-        val x1 :: x2 :: x3 :: Nil = line
-        (x1Dec.decode(x1), x2Dec.decode(x2), x3Dec.decode(x3))
-      }
+    implicit val hnilDecoder: CsvDecoder[HNil] =
+      (_: CsvLine) => HNil
 
-    implicit def tuple4Decoder[A,X1,X2,X3,X4](implicit
-                                              x1Dec: CsvSegmentDecoder[X1],
-                                              x2Dec: CsvSegmentDecoder[X2],
-                                              x3Dec: CsvSegmentDecoder[X3],
-                                              x4Dec: CsvSegmentDecoder[X4]): CsvDecoder[(X1,X2,X3,X4)] =
-      create { line =>
-        val x1 :: x2 :: x3 :: x4 :: Nil = line
-        (x1Dec.decode(x1), x2Dec.decode(x2), x3Dec.decode(x3), x4Dec.decode(x4))
-      }
+    implicit def hlistDecoder[H,T <: HList](implicit hd: CsvSegmentDecoder[H], td: CsvDecoder[T]): CsvDecoder[H :: T] =
+      (line: CsvLine) => hd.decode(line.head) :: td.decode(line.tail)
   }
 
   def decode[T: ClassTag](str: String, delimiter: String = DefaultCsvDelimiter)(implicit d: CsvDecoder[T]): Try[Seq[T]] =
