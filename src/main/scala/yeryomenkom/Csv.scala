@@ -10,7 +10,7 @@ object Csv {
   type CsvSegment = String
   type CsvLine = List[String]
 
-  trait CsvSegmentEncoder[T] {
+  trait CsvSegmentEncoder[-T] {
     def encode(value: T): CsvSegment
     //define an instance of CONTRAVARIANT FUNCTOR for CsvSegmentEncoder
     def contramap[B](f: B => T): CsvSegmentEncoder[B] = (value: B) => encode(f(value))
@@ -18,11 +18,8 @@ object Csv {
 
   object CsvSegmentEncoder {
     def create[T](f: T => CsvSegment): CsvSegmentEncoder[T] = (value: T) => f(value)
-    implicit val StringDecoder: CsvSegmentEncoder[String] = create(identity)
-    //hmmm... too similar...
-    implicit val IntDecoder: CsvSegmentEncoder[Int] = create(_.toString)
-    implicit val LongDecoder: CsvSegmentEncoder[Long] = create(_.toString)
-    implicit val DoubleDecoder: CsvSegmentEncoder[Double] = create(_.toString)
+    //define fallback encoder for any type
+    implicit val AnyEncoder: CsvSegmentEncoder[Any] = create(_.toString)
   }
 
   trait CsvSegmentDecoder[T] {
